@@ -1,0 +1,19 @@
+# ~/.config/systemd/user/logtriage.service
+# Install: systemctl --user enable --now logtriage.service
+
+[Unit]
+Description=logtriage - crash & OOM root cause reporter
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/logtriage
+Restart=on-failure
+RestartSec=5s
+# Lock memory to stay responsive under OOM pressure
+LimitMEMLOCK=infinity
+# Reduce own OOM score so we survive to report
+OOMScoreAdjust=-900
+
+[Install]
+WantedBy=default.target

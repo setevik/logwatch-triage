@@ -1,0 +1,33 @@
+# logtriage configuration
+# Copy to ~/.config/logtriage/config.toml and edit as needed.
+# All values shown are defaults — you only need to set what you want to change.
+
+[instance]
+# Human-readable name for this machine. Used in all alerts and CLI output.
+# Falls back to os.Hostname() if not set.
+# id = "workstation"
+
+# Role hint for context-aware defaults: "desktop", "nas", "server"
+# role = "desktop"
+
+[ntfy]
+# ntfy topic URL for notifications. Required for alerts to work.
+# url = "https://ntfy.sh/my-logtriage-topic"
+# url = "http://localhost:8080/my-topic"  # self-hosted
+
+# Map event severity to ntfy priority
+# priority_map = { critical = "urgent", high = "high", medium = "default" }
+
+# Only send real-time alerts for these tiers
+# alert_tiers = ["T1", "T2"]
+
+[cooldown]
+# Don't re-alert for same (unit/process, tier) within this window
+# window = "5m"
+
+# For crash-looping services, aggregate into single alert after N hits
+# aggregate_threshold = 3
+
+[log]
+# Log level: debug, info, warn, error
+# level = "info"
