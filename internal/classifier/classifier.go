@@ -35,6 +35,11 @@ func (c *Classifier) Classify(entry watcher.JournalEntry) *event.Event {
 		return ev
 	}
 
+	// T3 — Service Failure
+	if ev := c.classifyServiceFailure(entry, ts); ev != nil {
+		return ev
+	}
+
 	return nil
 }
 
@@ -95,6 +100,60 @@ func (c *Classifier) classifyCrash(entry watcher.JournalEntry, ts time.Time) *ev
 	}
 
 	return nil
+}
+
+func (c *Classifier) classifyServiceFailure(entry watcher.JournalEntry, ts time.Time) *event.Event {
+	// Only consider messages from systemd itself.
+	if !serviceIdentifiers[entry.SyslogIdentifier] {
+		return nil
+	}
+
+	for _, re := range serviceFailPatterns {
+		if !re.MatchString(entry.Message) {
+			continue
+		}
+
+		unit := extractServiceUnit(entry)
+		if unit == "" {
+			// If we can't identify the unit, use the systemd unit field.
+			unit = entry.SystemdUnit
+		}
+		if unit == "" {
+			continue
+		}
+
+		exitCode := extractExitCode(entry.Message)
+		summary := fmt.Sprintf("Service failed: %s", unit)
+		if exitCode != "" {
+			summary = fmt.Sprintf("Service failed: %s (exit %s)", unit, exitCode)
+		}
+
+		ev := event.New(c.instanceID, ts, event.TierServiceFailure, event.SevMedium, summary)
+		ev.Unit = unit
+		ev.RawFields = entry.Fields
+		return ev
+	}
+	return nil
+}
+
+// extractServiceUnit pulls the unit name from a systemd failure message.
+func extractServiceUnit(entry watcher.JournalEntry) string {
+	if m := serviceUnitRe.FindStringSubmatch(entry.Message); len(m) >= 2 {
+		return m[1]
+	}
+	// Fall back to journal metadata.
+	if unit, ok := entry.Fields["UNIT"]; ok {
+		return unit
+	}
+	return ""
+}
+
+// extractExitCode pulls the exit status from a failure message.
+func extractExitCode(msg string) string {
+	if m := serviceExitCodeRe.FindStringSubmatch(msg); len(m) == 2 {
+		return m[1]
+	}
+	return ""
 }
 
 // extractOOMProcess pulls process name and PID from OOM kill messages.

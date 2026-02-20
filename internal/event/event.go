@@ -11,8 +11,9 @@ import (
 type Tier string
 
 const (
-	TierOOMKill      Tier = "T1"
-	TierProcessCrash Tier = "T2"
+	TierOOMKill        Tier = "T1"
+	TierProcessCrash   Tier = "T2"
+	TierServiceFailure Tier = "T3"
 )
 
 // Severity indicates the urgency of an event.
@@ -60,6 +61,8 @@ func (t Tier) Label() string {
 		return "OOM Kill"
 	case TierProcessCrash:
 		return "Process Crash"
+	case TierServiceFailure:
+		return "Service Failure"
 	default:
 		return string(t)
 	}

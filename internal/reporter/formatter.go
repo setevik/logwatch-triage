@@ -9,14 +9,16 @@ import (
 
 // tierEmoji maps event tiers to display emojis for ntfy titles.
 var tierEmoji = map[event.Tier]string{
-	event.TierOOMKill:      "\U0001f534", // red circle
-	event.TierProcessCrash: "\U0001f4a5", // collision/crash
+	event.TierOOMKill:        "\U0001f534", // red circle
+	event.TierProcessCrash:   "\U0001f4a5", // collision/crash
+	event.TierServiceFailure: "\U0001f6d1", // stop sign
 }
 
 // tierTags maps event tiers to ntfy tag names.
 var tierTags = map[event.Tier]string{
-	event.TierOOMKill:      "skull,memory",
-	event.TierProcessCrash: "warning,crash",
+	event.TierOOMKill:        "skull,memory",
+	event.TierProcessCrash:   "warning,crash",
+	event.TierServiceFailure: "rotating_light,service",
 }
 
 // FormatTitle builds the ntfy notification title for an event.

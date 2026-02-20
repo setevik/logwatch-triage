@@ -28,6 +28,13 @@
 # For crash-looping services, aggregate into single alert after N hits
 # aggregate_threshold = 3
 
+[db]
+# SQLite database path for event storage
+# path = "~/.local/share/logtriage/events.db"
+
+# How long to retain events before automatic cleanup
+# retention = "2160h"  # 90 days
+
 [log]
 # Log level: debug, info, warn, error
 # level = "info"
