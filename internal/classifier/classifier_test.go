@@ -185,6 +185,103 @@ func TestClassifyCrash(t *testing.T) {
 	}
 }
 
+func TestClassifyServiceFailure(t *testing.T) {
+	c := New("testhost")
+
+	tests := []struct {
+		name    string
+		entry   watcher.JournalEntry
+		wantNil bool
+		tier    event.Tier
+		unit    string
+	}{
+		{
+			name: "service entered failed state",
+			entry: watcher.JournalEntry{
+				Message:           "docker.service entered failed state.",
+				Priority:          3,
+				SyslogIdentifier:  "systemd",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier: event.TierServiceFailure,
+			unit: "docker.service",
+		},
+		{
+			name: "service failed with result",
+			entry: watcher.JournalEntry{
+				Message:           "nginx.service: Failed with result 'exit-code'.",
+				Priority:          3,
+				SyslogIdentifier:  "systemd",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier: event.TierServiceFailure,
+			unit: "nginx.service",
+		},
+		{
+			name: "main process exited with non-zero",
+			entry: watcher.JournalEntry{
+				Message:           "myapp.service: Main process exited, code=exited, status=1/FAILURE",
+				Priority:          3,
+				SyslogIdentifier:  "systemd",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier: event.TierServiceFailure,
+			unit: "myapp.service",
+		},
+		{
+			name: "non-systemd identifier should not match",
+			entry: watcher.JournalEntry{
+				Message:           "docker.service entered failed state.",
+				Priority:          3,
+				SyslogIdentifier:  "docker",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			wantNil: true,
+		},
+		{
+			name: "normal systemd message should not match",
+			entry: watcher.JournalEntry{
+				Message:           "Started Docker Application Container Engine.",
+				Priority:          6,
+				SyslogIdentifier:  "systemd",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			wantNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ev := c.Classify(tt.entry)
+
+			if tt.wantNil {
+				if ev != nil {
+					t.Fatalf("expected nil event, got tier=%s summary=%q", ev.Tier, ev.Summary)
+				}
+				return
+			}
+
+			if ev == nil {
+				t.Fatal("expected event, got nil")
+			}
+			if ev.Tier != tt.tier {
+				t.Errorf("tier = %q, want %q", ev.Tier, tt.tier)
+			}
+			if ev.Unit != tt.unit {
+				t.Errorf("unit = %q, want %q", ev.Unit, tt.unit)
+			}
+			if ev.Severity != event.SevMedium {
+				t.Errorf("severity = %q, expected medium", ev.Severity)
+			}
+		})
+	}
+}
+
 func TestClassifyTimestampParsing(t *testing.T) {
 	c := New("testhost")
 

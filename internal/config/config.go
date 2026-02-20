@@ -16,6 +16,7 @@ type Config struct {
 	Instance InstanceConfig `toml:"instance"`
 	Ntfy     NtfyConfig     `toml:"ntfy"`
 	Cooldown CooldownConfig `toml:"cooldown"`
+	DB       DBConfig       `toml:"db"`
 	Log      LogConfig      `toml:"log"`
 }
 
@@ -36,6 +37,12 @@ type NtfyConfig struct {
 type CooldownConfig struct {
 	Window             Duration `toml:"window"`
 	AggregateThreshold int      `toml:"aggregate_threshold"`
+}
+
+// DBConfig controls SQLite event storage.
+type DBConfig struct {
+	Path      string   `toml:"path"`
+	Retention Duration `toml:"retention"`
 }
 
 // LogConfig controls logging.
@@ -80,6 +87,10 @@ func Default() *Config {
 		Cooldown: CooldownConfig{
 			Window:             Duration{5 * time.Minute},
 			AggregateThreshold: 3,
+		},
+		DB: DBConfig{
+			Path:      "", // defaults to ~/.local/share/logtriage/events.db at runtime
+			Retention: Duration{90 * 24 * time.Hour},
 		},
 		Log: LogConfig{
 			Level: "info",
@@ -128,6 +139,27 @@ func (c *Config) ShouldAlert(tier string) bool {
 		}
 	}
 	return false
+}
+
+// DBPath returns the resolved database path. If not explicitly configured,
+// it returns the default path under the XDG data directory.
+func (c *Config) DBPath() string {
+	if c.DB.Path != "" {
+		// Expand ~ prefix.
+		if strings.HasPrefix(c.DB.Path, "~/") {
+			home, err := os.UserHomeDir()
+			if err == nil {
+				return filepath.Join(home, c.DB.Path[2:])
+			}
+		}
+		return c.DB.Path
+	}
+	dataHome := os.Getenv("XDG_DATA_HOME")
+	if dataHome == "" {
+		home, _ := os.UserHomeDir()
+		dataHome = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Join(dataHome, "logtriage", "events.db")
 }
 
 // NtfyPriority maps a severity string to an ntfy priority string.

@@ -24,6 +24,8 @@ func (e *Enricher) Enrich(ctx context.Context, ev *event.Event) {
 		enrichOOM(ctx, ev)
 	case event.TierProcessCrash:
 		enrichCrash(ctx, ev)
+	case event.TierServiceFailure:
+		enrichService(ctx, ev)
 	default:
 		slog.Debug("no enrichment available for tier", "tier", ev.Tier)
 	}
