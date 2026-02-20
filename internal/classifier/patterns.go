@@ -36,3 +36,25 @@ var crashSegfaultRe = regexp.MustCompile(`(\S+)\[(\d+)\]: segfault at`)
 // coredumpRe extracts process info from systemd-coredump messages.
 // Example: "Process 1234 (app) of user 1000 dumped core."
 var coredumpProcessRe = regexp.MustCompile(`Process (\d+) \(([^)]+)\) of user \d+ dumped core`)
+
+// T3 — Service Failure patterns
+var serviceFailPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`entered failed state`),
+	regexp.MustCompile(`Failed with result`),
+	regexp.MustCompile(`Main process exited, code=exited, status=\d+/`),
+}
+
+// serviceIdentifiers are syslog identifiers that emit service failure messages.
+var serviceIdentifiers = map[string]bool{
+	"systemd": true,
+}
+
+// serviceUnitRe extracts the unit name from systemd failure messages.
+// Example: "docker.service: Main process exited, code=exited, status=1/FAILURE"
+// Example: "foo.service entered failed state."
+// Example: "foo.service: Failed with result 'exit-code'."
+var serviceUnitRe = regexp.MustCompile(`^(\S+\.service)(?::|:?\s)`)
+
+// serviceExitCodeRe extracts exit status from failure messages.
+// Example: "status=1/FAILURE"
+var serviceExitCodeRe = regexp.MustCompile(`status=(\d+)/`)
