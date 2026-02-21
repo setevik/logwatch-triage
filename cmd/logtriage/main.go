@@ -19,6 +19,7 @@ import (
 	"github.com/setevik/logtriage/internal/config"
 	"github.com/setevik/logtriage/internal/enricher"
 	"github.com/setevik/logtriage/internal/event"
+	"github.com/setevik/logtriage/internal/monitor"
 	"github.com/setevik/logtriage/internal/reporter"
 	"github.com/setevik/logtriage/internal/store"
 	"github.com/setevik/logtriage/internal/watcher"
@@ -135,6 +136,30 @@ func run(cfg *config.Config) error {
 		return fmt.Errorf("starting journal watcher: %w", err)
 	}
 
+	// Start PSI monitor if enabled.
+	var psiEvents <-chan monitor.PSIEvent
+	if cfg.PSI.Enabled {
+		psiMon := monitor.NewPSIMonitor(
+			cfg.PSI.PollInterval.Duration,
+			cfg.PSI.WarnSomeAvg10,
+			cfg.PSI.WarnFullAvg10,
+		)
+		psiEvents = psiMon.Events(ctx)
+		slog.Info("PSI monitor started",
+			"interval", cfg.PSI.PollInterval.Duration,
+			"warn_some", cfg.PSI.WarnSomeAvg10,
+			"warn_full", cfg.PSI.WarnFullAvg10,
+		)
+	}
+
+	// Start SMART monitor if enabled.
+	var smartEvents <-chan monitor.SMARTEvent
+	if cfg.SMART.Enabled {
+		smartMon := monitor.NewSMARTMonitor(cfg.SMART.PollInterval.Duration)
+		smartEvents = smartMon.Events(ctx)
+		slog.Info("SMART monitor started", "interval", cfg.SMART.PollInterval.Duration)
+	}
+
 	slog.Info("pipeline started, watching for events")
 
 	for {
@@ -150,46 +175,98 @@ func run(cfg *config.Config) error {
 				continue
 			}
 
-			slog.Info("event classified",
-				"tier", ev.Tier,
-				"severity", ev.Severity,
-				"summary", ev.Summary,
-			)
+			handleEvent(ctx, ev, enr, db, rep, cfg)
 
-			enr.Enrich(ctx, ev)
-
-			// Store event in database.
-			if err := db.Insert(ev); err != nil {
-				slog.Error("failed to store event", "error", err)
+		case psiEv, ok := <-psiEvents:
+			if !ok {
+				psiEvents = nil
+				continue
 			}
 
-			// Check cooldown before notifying.
-			dedup, err := db.CheckCooldown(ev, cfg.Cooldown.Window.Duration, cfg.Cooldown.AggregateThreshold)
-			if err != nil {
-				slog.Error("cooldown check failed", "error", err)
+			// Build T5 detail with top consumers.
+			detail := fmt.Sprintf("PSI some avg10=%.1f%% full avg10=%.1f%%",
+				psiEv.Stats.SomeAvg10, psiEv.Stats.FullAvg10)
+			if len(psiEv.TopConsumers) > 0 {
+				detail += "\n\nTop memory consumers:\n"
+				detail += monitor.FormatTopConsumers(psiEv.TopConsumers)
 			}
 
-			if dedup.ShouldAlert {
-				if dedup.Aggregated {
-					ev.Summary = fmt.Sprintf("[x%d] %s", dedup.RecentCount, ev.Summary)
-				}
-				if err := rep.Report(ctx, ev); err != nil {
-					slog.Error("failed to send notification", "error", err)
-				} else {
-					_ = db.MarkNotified(ev.ID)
-				}
-			} else {
-				slog.Debug("notification suppressed by cooldown",
-					"tier", ev.Tier,
-					"recent_count", dedup.RecentCount,
-				)
+			ev := cls.ClassifyPSIEvent(psiEv.Stats.SomeAvg10, psiEv.Stats.FullAvg10, detail)
+			handleEvent(ctx, ev, enr, db, rep, cfg)
+
+		case smartEv, ok := <-smartEvents:
+			if !ok {
+				smartEvents = nil
+				continue
 			}
+
+			s := smartEv.Status
+			summary := fmt.Sprintf("SMART: %s (%s)", s.Device, s.ModelName)
+			if !s.Healthy {
+				summary = fmt.Sprintf("SMART FAILING: %s (%s)", s.Device, s.ModelName)
+			}
+
+			var detail strings.Builder
+			fmt.Fprintf(&detail, "Device: %s\nModel: %s\n", s.Device, s.ModelName)
+			if !s.Healthy {
+				fmt.Fprintf(&detail, "Health: FAILED\n")
+			}
+			if s.Temperature > 0 {
+				fmt.Fprintf(&detail, "Temperature: %d°C\n", s.Temperature)
+			}
+			if s.ReallocCount > 0 {
+				fmt.Fprintf(&detail, "Reallocated sectors: %d\n", s.ReallocCount)
+			}
+			if s.PendCount > 0 {
+				fmt.Fprintf(&detail, "Pending sectors: %d\n", s.PendCount)
+			}
+
+			ev := cls.ClassifySMARTEvent(s.Device, summary, detail.String())
+			handleEvent(ctx, ev, enr, db, rep, cfg)
 
 		case sig := <-sigCh:
 			slog.Info("received signal, shutting down", "signal", sig)
 			cancel()
 			return nil
 		}
+	}
+}
+
+// handleEvent runs an event through the enrichment, storage, dedup, and notification pipeline.
+func handleEvent(ctx context.Context, ev *event.Event, enr *enricher.Enricher, db *store.DB, rep *reporter.NtfyReporter, cfg *config.Config) {
+	slog.Info("event classified",
+		"tier", ev.Tier,
+		"severity", ev.Severity,
+		"summary", ev.Summary,
+	)
+
+	enr.Enrich(ctx, ev)
+
+	// Store event in database.
+	if err := db.Insert(ev); err != nil {
+		slog.Error("failed to store event", "error", err)
+	}
+
+	// Check cooldown before notifying.
+	dedup, err := db.CheckCooldown(ev, cfg.Cooldown.Window.Duration, cfg.Cooldown.AggregateThreshold)
+	if err != nil {
+		slog.Error("cooldown check failed", "error", err)
+	}
+
+	if dedup.ShouldAlert {
+		if dedup.Aggregated {
+			ev.Summary = fmt.Sprintf("[x%d] %s", dedup.RecentCount, ev.Summary)
+		}
+		if err := rep.Report(ctx, ev); err != nil {
+			slog.Error("failed to send notification", "error", err)
+		} else {
+			_ = db.MarkNotified(ev.ID)
+		}
+	} else {
+		slog.Debug("notification suppressed by cooldown",
+			"tier", ev.Tier,
+			"recent_count", dedup.RecentCount,
+		)
 	}
 }
 

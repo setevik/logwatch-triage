@@ -282,6 +282,167 @@ func TestClassifyServiceFailure(t *testing.T) {
 	}
 }
 
+func TestClassifyKernelHW(t *testing.T) {
+	c := New("testhost")
+
+	tests := []struct {
+		name    string
+		entry   watcher.JournalEntry
+		wantNil bool
+		tier    event.Tier
+		summary string
+	}{
+		{
+			name: "I/O error on disk",
+			entry: watcher.JournalEntry{
+				Message:           "blk_update_request: I/O error, dev sda, sector 12345",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "I/O error on /dev/sda",
+		},
+		{
+			name: "EXT4 filesystem error",
+			entry: watcher.JournalEntry{
+				Message:           "EXT4-fs error (device sda1): ext4_journal_check_start:61: Detected aborted journal",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "EXT4 error on /dev/sda1",
+		},
+		{
+			name: "GPU hang",
+			entry: watcher.JournalEntry{
+				Message:           "i915 0000:00:02.0: GPU HANG: ecode 9:1:0x00000000",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "Intel GPU hang",
+		},
+		{
+			name: "MCE hardware error",
+			entry: watcher.JournalEntry{
+				Message:           "mce: [Hardware Error]: Machine check events logged",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "Machine check exception",
+		},
+		{
+			name: "NVIDIA Xid error",
+			entry: watcher.JournalEntry{
+				Message:           "NVRM: Xid (PCI:0000:01:00): 79, pid=1234, GPU has fallen off the bus",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "NVIDIA GPU error (Xid)",
+		},
+		{
+			name: "non-kernel transport should not match",
+			entry: watcher.JournalEntry{
+				Message:           "I/O error on something",
+				Priority:          3,
+				SyslogIdentifier:  "myapp",
+				Transport:         "stdout",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			wantNil: true,
+		},
+		{
+			name: "normal kernel message should not match",
+			entry: watcher.JournalEntry{
+				Message:           "Loading kernel modules...",
+				Priority:          6,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			wantNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ev := c.Classify(tt.entry)
+
+			if tt.wantNil {
+				if ev != nil {
+					t.Fatalf("expected nil event, got tier=%s summary=%q", ev.Tier, ev.Summary)
+				}
+				return
+			}
+
+			if ev == nil {
+				t.Fatal("expected event, got nil")
+			}
+			if ev.Tier != tt.tier {
+				t.Errorf("tier = %q, want %q", ev.Tier, tt.tier)
+			}
+			if ev.Summary != tt.summary {
+				t.Errorf("summary = %q, want %q", ev.Summary, tt.summary)
+			}
+			if ev.Severity != event.SevHigh {
+				t.Errorf("severity = %q, expected high", ev.Severity)
+			}
+		})
+	}
+}
+
+func TestClassifyPSIEvent(t *testing.T) {
+	c := New("testhost")
+
+	ev := c.ClassifyPSIEvent(65.2, 15.3, "PSI some avg10=65.2% full avg10=15.3%")
+	if ev == nil {
+		t.Fatal("expected event")
+	}
+	if ev.Tier != event.TierMemPressure {
+		t.Errorf("tier = %q, want T5", ev.Tier)
+	}
+	if ev.Severity != event.SevWarning {
+		t.Errorf("severity = %q, want warning", ev.Severity)
+	}
+	if ev.InstanceID != "testhost" {
+		t.Errorf("instanceID = %q", ev.InstanceID)
+	}
+}
+
+func TestClassifySMARTEvent(t *testing.T) {
+	c := New("testhost")
+
+	ev := c.ClassifySMARTEvent("/dev/sda", "SMART FAILING: /dev/sda", "Health: FAILED")
+	if ev == nil {
+		t.Fatal("expected event")
+	}
+	if ev.Tier != event.TierKernelHW {
+		t.Errorf("tier = %q, want T4", ev.Tier)
+	}
+	if ev.Severity != event.SevHigh {
+		t.Errorf("severity = %q, want high", ev.Severity)
+	}
+}
+
 func TestClassifyTimestampParsing(t *testing.T) {
 	c := New("testhost")
 
