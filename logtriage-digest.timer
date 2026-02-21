@@ -1,0 +1,12 @@
+# ~/.config/systemd/user/logtriage-digest.timer
+# Install: systemctl --user enable --now logtriage-digest.timer
+
+[Unit]
+Description=logtriage weekly digest
+
+[Timer]
+OnCalendar=Sun 09:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

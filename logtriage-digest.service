@@ -1,0 +1,8 @@
+# ~/.config/systemd/user/logtriage-digest.service
+
+[Unit]
+Description=logtriage weekly digest generation
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/logtriage digest --send

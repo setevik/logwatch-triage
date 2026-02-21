@@ -329,7 +329,7 @@ func TestClassifyKernelHW(t *testing.T) {
 				Fields:            map[string]string{},
 			},
 			tier:    event.TierKernelHW,
-			summary: "Intel GPU hang",
+			summary: "Intel GPU hang (ecode 9:1:0x00000000)",
 		},
 		{
 			name: "MCE hardware error",
@@ -355,7 +355,7 @@ func TestClassifyKernelHW(t *testing.T) {
 				Fields:            map[string]string{},
 			},
 			tier:    event.TierKernelHW,
-			summary: "NVIDIA GPU error (Xid)",
+			summary: "NVIDIA Xid 79: GPU has fallen off the bus",
 		},
 		{
 			name: "non-kernel transport should not match",
@@ -407,6 +407,220 @@ func TestClassifyKernelHW(t *testing.T) {
 				t.Errorf("severity = %q, expected high", ev.Severity)
 			}
 		})
+	}
+}
+
+func TestClassifyGPUPatterns(t *testing.T) {
+	c := New("testhost")
+
+	tests := []struct {
+		name    string
+		entry   watcher.JournalEntry
+		tier    event.Tier
+		summary string
+		gpuFlag bool
+	}{
+		{
+			name: "NVIDIA Xid 31 memory page fault",
+			entry: watcher.JournalEntry{
+				Message:           "NVRM: Xid (PCI:0000:04:00): 31, Ch 00000001, engmask 00000101, intr 10000000",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "NVIDIA Xid 31: GPU memory page fault",
+			gpuFlag: true,
+		},
+		{
+			name: "NVIDIA GPU fallen off bus",
+			entry: watcher.JournalEntry{
+				Message:           "NVRM: GPU 0000:01:00.0: GPU has fallen off the bus.",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "NVIDIA GPU fallen off bus (fatal)",
+			gpuFlag: true,
+		},
+		{
+			name: "NVIDIA VRAM out of memory",
+			entry: watcher.JournalEntry{
+				Message:           "NVRM: Assertion failed: Out of memory [NV_ERR_NO_MEMORY]",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "NVIDIA VRAM out of memory",
+			gpuFlag: true,
+		},
+		{
+			name: "AMD GPU reset",
+			entry: watcher.JournalEntry{
+				Message:           "amdgpu 0000:03:00.0: amdgpu: GPU reset(2) succeeded!",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "AMD GPU reset",
+			gpuFlag: true,
+		},
+		{
+			name: "AMD GPU ring timeout",
+			entry: watcher.JournalEntry{
+				Message:           "amdgpu 0000:03:00.0: amdgpu: ring gfx_0.0.0 timeout",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "AMD GPU ring gfx_0.0.0 timeout",
+			gpuFlag: true,
+		},
+		{
+			name: "AMD VRAM protection fault",
+			entry: watcher.JournalEntry{
+				Message:           "VM_L2_PROTECTION_FAULT_STATUS:0x00051014",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "AMD GPU VRAM protection fault",
+			gpuFlag: true,
+		},
+		{
+			name: "AMD VRAM lost",
+			entry: watcher.JournalEntry{
+				Message:           "[drm] VRAM is lost due to GPU reset!",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "VRAM lost after GPU reset",
+			gpuFlag: true,
+		},
+		{
+			name: "AMD GPU thermal fault",
+			entry: watcher.JournalEntry{
+				Message:           "amdgpu 0000:03:00.0: amdgpu: GPU SW CTF temperature reached, shutdown!",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "AMD GPU thermal fault",
+			gpuFlag: true,
+		},
+		{
+			name: "Intel i915 engine reset",
+			entry: watcher.JournalEntry{
+				Message:           "i915 0000:00:02.0: Resetting rcs0 for hang on rcs0",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "Intel GPU resetting rcs0: hang on rcs0",
+			gpuFlag: true,
+		},
+		{
+			name: "Intel i915 chip reset",
+			entry: watcher.JournalEntry{
+				Message:           "i915 0000:00:02.0: Resetting chip for GuC failed to respond",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "Intel GPU resetting chip: GuC failed to respond",
+			gpuFlag: true,
+		},
+		{
+			name: "DRM flip timeout",
+			entry: watcher.JournalEntry{
+				Message:           "[drm:nv_drm_atomic_commit [nvidia_drm]] *ERROR* [CRTC:71:head-0] flip_done timed out",
+				Priority:          3,
+				SyslogIdentifier:  "kernel",
+				Transport:         "kernel",
+				RealtimeTimestamp: "1708300000000000",
+				Fields:            map[string]string{},
+			},
+			tier:    event.TierKernelHW,
+			summary: "DRM flip timeout",
+			gpuFlag: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ev := c.Classify(tt.entry)
+			if ev == nil {
+				t.Fatal("expected event, got nil")
+			}
+			if ev.Tier != tt.tier {
+				t.Errorf("tier = %q, want %q", ev.Tier, tt.tier)
+			}
+			if ev.Summary != tt.summary {
+				t.Errorf("summary = %q, want %q", ev.Summary, tt.summary)
+			}
+			if tt.gpuFlag && ev.RawFields["_gpu_event"] != "true" {
+				t.Error("expected _gpu_event=true in RawFields")
+			}
+		})
+	}
+}
+
+func TestClassifyGPUEvent(t *testing.T) {
+	c := New("testhost")
+	ev := c.ClassifyGPUEvent("card0", "amd", "GPU thermal warning: card0 92°C", "Temperature: 92°C")
+	if ev == nil {
+		t.Fatal("expected event")
+	}
+	if ev.Tier != event.TierKernelHW {
+		t.Errorf("tier = %q, want T4", ev.Tier)
+	}
+	if ev.RawFields["_gpu_event"] != "true" {
+		t.Error("expected _gpu_event=true")
+	}
+	if ev.RawFields["_gpu_vendor"] != "amd" {
+		t.Errorf("_gpu_vendor = %q, want amd", ev.RawFields["_gpu_vendor"])
+	}
+}
+
+func TestIsCompositorProcess(t *testing.T) {
+	compositors := []string{"Xorg", "gnome-shell", "kwin_wayland", "sway", "Hyprland"}
+	for _, p := range compositors {
+		if !IsCompositorProcess(p) {
+			t.Errorf("IsCompositorProcess(%q) = false, want true", p)
+		}
+	}
+	if IsCompositorProcess("firefox") {
+		t.Error("IsCompositorProcess(firefox) = true, want false")
 	}
 }
 

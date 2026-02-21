@@ -15,9 +15,11 @@ import (
 type Config struct {
 	Instance InstanceConfig `toml:"instance"`
 	Ntfy     NtfyConfig     `toml:"ntfy"`
+	Digest   DigestConfig   `toml:"digest"`
 	Cooldown CooldownConfig `toml:"cooldown"`
 	PSI      PSIConfig      `toml:"psi"`
 	SMART    SMARTConfig    `toml:"smart"`
+	GPU      GPUConfig      `toml:"gpu"`
 	DB       DBConfig       `toml:"db"`
 	Log      LogConfig      `toml:"log"`
 }
@@ -33,6 +35,12 @@ type NtfyConfig struct {
 	URL         string            `toml:"url"`
 	PriorityMap map[string]string `toml:"priority_map"`
 	AlertTiers  []string          `toml:"alert_tiers"`
+}
+
+// DigestConfig controls weekly digest generation.
+type DigestConfig struct {
+	Enabled bool   `toml:"enabled"`
+	Topic   string `toml:"topic"` // defaults to ntfy.url if empty
 }
 
 // CooldownConfig controls dedup/cooldown behavior.
@@ -53,6 +61,14 @@ type PSIConfig struct {
 type SMARTConfig struct {
 	Enabled      bool     `toml:"enabled"`
 	PollInterval Duration `toml:"poll_interval"`
+}
+
+// GPUConfig controls GPU monitoring via sysfs and vendor tools.
+type GPUConfig struct {
+	Enabled      bool     `toml:"enabled"`
+	PollInterval Duration `toml:"poll_interval"`
+	TempWarn     int      `toml:"temp_warn"`     // degrees C, emit warning above this
+	VRAMWarnPct  int      `toml:"vram_warn_pct"` // emit warning when VRAM usage exceeds this %
 }
 
 // DBConfig controls SQLite event storage.
@@ -100,6 +116,9 @@ func Default() *Config {
 			},
 			AlertTiers: []string{"T1", "T2"},
 		},
+		Digest: DigestConfig{
+			Enabled: true,
+		},
 		Cooldown: CooldownConfig{
 			Window:             Duration{5 * time.Minute},
 			AggregateThreshold: 3,
@@ -113,6 +132,12 @@ func Default() *Config {
 		SMART: SMARTConfig{
 			Enabled:      false,
 			PollInterval: Duration{1 * time.Hour},
+		},
+		GPU: GPUConfig{
+			Enabled:      true,
+			PollInterval: Duration{30 * time.Second},
+			TempWarn:     85,
+			VRAMWarnPct:  90,
 		},
 		DB: DBConfig{
 			Path:      "", // defaults to ~/.local/share/logtriage/events.db at runtime
@@ -186,6 +211,15 @@ func (c *Config) DBPath() string {
 		dataHome = filepath.Join(home, ".local", "share")
 	}
 	return filepath.Join(dataHome, "logtriage", "events.db")
+}
+
+// DigestTopic returns the ntfy URL to use for digest notifications.
+// Falls back to the main ntfy URL if not explicitly set.
+func (c *Config) DigestTopic() string {
+	if c.Digest.Topic != "" {
+		return c.Digest.Topic
+	}
+	return c.Ntfy.URL
 }
 
 // NtfyPriority maps a severity string to an ntfy priority string.
