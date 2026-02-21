@@ -21,6 +21,13 @@
 # Only send real-time alerts for these tiers
 # alert_tiers = ["T1", "T2"]
 
+[digest]
+# Enable weekly digest generation (used with logtriage-digest.timer)
+# enabled = true
+
+# ntfy topic for digest (defaults to ntfy.url if not set)
+# topic = ""
+
 [cooldown]
 # Don't re-alert for same (unit/process, tier) within this window
 # window = "5m"
