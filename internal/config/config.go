@@ -15,6 +15,7 @@ import (
 type Config struct {
 	Instance InstanceConfig `toml:"instance"`
 	Ntfy     NtfyConfig     `toml:"ntfy"`
+	Digest   DigestConfig   `toml:"digest"`
 	Cooldown CooldownConfig `toml:"cooldown"`
 	PSI      PSIConfig      `toml:"psi"`
 	SMART    SMARTConfig    `toml:"smart"`
@@ -33,6 +34,12 @@ type NtfyConfig struct {
 	URL         string            `toml:"url"`
 	PriorityMap map[string]string `toml:"priority_map"`
 	AlertTiers  []string          `toml:"alert_tiers"`
+}
+
+// DigestConfig controls weekly digest generation.
+type DigestConfig struct {
+	Enabled bool   `toml:"enabled"`
+	Topic   string `toml:"topic"` // defaults to ntfy.url if empty
 }
 
 // CooldownConfig controls dedup/cooldown behavior.
@@ -99,6 +106,9 @@ func Default() *Config {
 				"medium":   "default",
 			},
 			AlertTiers: []string{"T1", "T2"},
+		},
+		Digest: DigestConfig{
+			Enabled: true,
 		},
 		Cooldown: CooldownConfig{
 			Window:             Duration{5 * time.Minute},
@@ -186,6 +196,15 @@ func (c *Config) DBPath() string {
 		dataHome = filepath.Join(home, ".local", "share")
 	}
 	return filepath.Join(dataHome, "logtriage", "events.db")
+}
+
+// DigestTopic returns the ntfy URL to use for digest notifications.
+// Falls back to the main ntfy URL if not explicitly set.
+func (c *Config) DigestTopic() string {
+	if c.Digest.Topic != "" {
+		return c.Digest.Topic
+	}
+	return c.Ntfy.URL
 }
 
 // NtfyPriority maps a severity string to an ntfy priority string.
