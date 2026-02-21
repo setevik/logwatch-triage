@@ -24,10 +24,17 @@ func (e *Enricher) Enrich(ctx context.Context, ev *event.Event) {
 		enrichOOM(ctx, ev)
 	case event.TierProcessCrash:
 		enrichCrash(ctx, ev)
+		// Also check if this is a compositor crash (possibly GPU-related).
+		enrichCompositorCrash(ctx, ev)
 	case event.TierServiceFailure:
 		enrichService(ctx, ev)
 	case event.TierKernelHW:
-		enrichKernelHW(ctx, ev)
+		// Use GPU-specific enrichment for GPU events, disk enrichment otherwise.
+		if ev.RawFields["_gpu_event"] == "true" {
+			enrichGPU(ctx, ev)
+		} else {
+			enrichKernelHW(ctx, ev)
+		}
 	default:
 		slog.Debug("no enrichment available for tier", "tier", ev.Tier)
 	}

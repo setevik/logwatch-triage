@@ -6,7 +6,7 @@ Description=logtriage - crash & OOM root cause reporter
 After=default.target
 
 [Service]
-Type=simple
+Type=notify
 ExecStart=%h/.local/bin/logtriage
 Restart=on-failure
 RestartSec=5s
@@ -14,6 +14,7 @@ RestartSec=5s
 LimitMEMLOCK=infinity
 # Reduce own OOM score so we survive to report
 OOMScoreAdjust=-900
+WatchdogSec=60
 
 [Install]
 WantedBy=default.target
