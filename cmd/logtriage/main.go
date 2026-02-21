@@ -496,8 +496,8 @@ func runStatus(args []string) {
 	gpus := monitor.DetectGPUs()
 	for i := range gpus {
 		gpu := &gpus[i]
-		monitor.ReadGPUTempExported(gpu)
-		monitor.ReadGPUVRAMExported(gpu)
+		monitor.ReadGPUTemp(gpu)
+		monitor.ReadGPUVRAM(gpu)
 
 		info := fmt.Sprintf("%s (%s)", filepath.Base(gpu.CardPath), gpu.Vendor)
 		if gpu.Temperature > 0 {
@@ -511,8 +511,8 @@ func runStatus(args []string) {
 	}
 
 	// DB info.
-	allEvents, _ := db.Query(store.QueryFilter{})
-	fmt.Printf("DB events:    %d total\n", len(allEvents))
+	eventCount, _ := db.Count()
+	fmt.Printf("DB events:    %d total\n", eventCount)
 	fmt.Printf("DB path:      %s\n", cfg.DBPath())
 }
 
