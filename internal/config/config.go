@@ -19,6 +19,7 @@ type Config struct {
 	Cooldown CooldownConfig `toml:"cooldown"`
 	PSI      PSIConfig      `toml:"psi"`
 	SMART    SMARTConfig    `toml:"smart"`
+	GPU      GPUConfig      `toml:"gpu"`
 	DB       DBConfig       `toml:"db"`
 	Log      LogConfig      `toml:"log"`
 }
@@ -60,6 +61,14 @@ type PSIConfig struct {
 type SMARTConfig struct {
 	Enabled      bool     `toml:"enabled"`
 	PollInterval Duration `toml:"poll_interval"`
+}
+
+// GPUConfig controls GPU monitoring via sysfs and vendor tools.
+type GPUConfig struct {
+	Enabled      bool     `toml:"enabled"`
+	PollInterval Duration `toml:"poll_interval"`
+	TempWarn     int      `toml:"temp_warn"`     // degrees C, emit warning above this
+	VRAMWarnPct  int      `toml:"vram_warn_pct"` // emit warning when VRAM usage exceeds this %
 }
 
 // DBConfig controls SQLite event storage.
@@ -123,6 +132,12 @@ func Default() *Config {
 		SMART: SMARTConfig{
 			Enabled:      false,
 			PollInterval: Duration{1 * time.Hour},
+		},
+		GPU: GPUConfig{
+			Enabled:      true,
+			PollInterval: Duration{30 * time.Second},
+			TempWarn:     85,
+			VRAMWarnPct:  90,
 		},
 		DB: DBConfig{
 			Path:      "", // defaults to ~/.local/share/logtriage/events.db at runtime

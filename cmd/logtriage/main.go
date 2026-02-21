@@ -168,6 +168,22 @@ func run(cfg *config.Config) error {
 		slog.Info("SMART monitor started", "interval", cfg.SMART.PollInterval.Duration)
 	}
 
+	// Start GPU monitor if enabled.
+	var gpuEvents <-chan monitor.GPUEvent
+	if cfg.GPU.Enabled {
+		gpuMon := monitor.NewGPUMonitor(
+			cfg.GPU.PollInterval.Duration,
+			cfg.GPU.TempWarn,
+			cfg.GPU.VRAMWarnPct,
+		)
+		gpuEvents = gpuMon.Events(ctx)
+		slog.Info("GPU monitor started",
+			"interval", cfg.GPU.PollInterval.Duration,
+			"temp_warn", cfg.GPU.TempWarn,
+			"vram_warn_pct", cfg.GPU.VRAMWarnPct,
+		)
+	}
+
 	// Notify systemd we are ready (sd_notify).
 	sdNotify("READY=1")
 
@@ -248,6 +264,30 @@ func run(cfg *config.Config) error {
 			}
 
 			ev := cls.ClassifySMARTEvent(s.Device, summary, detail.String())
+			handleEvent(ctx, ev, enr, db, rep, cfg)
+
+		case gpuEv, ok := <-gpuEvents:
+			if !ok {
+				gpuEvents = nil
+				continue
+			}
+
+			s := gpuEv.Status
+			var summary, detail string
+			switch gpuEv.Reason {
+			case "thermal_warning":
+				summary = fmt.Sprintf("GPU thermal warning: %s %d°C", filepath.Base(s.CardPath), s.Temperature)
+				detail = monitor.FormatGPUStatus(s)
+			case "vram_high":
+				pct := int(s.VRAMUsed * 100 / s.VRAMTotal)
+				summary = fmt.Sprintf("GPU VRAM high: %s %d%%", filepath.Base(s.CardPath), pct)
+				detail = monitor.FormatGPUStatus(s)
+			default:
+				summary = fmt.Sprintf("GPU event: %s (%s)", filepath.Base(s.CardPath), gpuEv.Reason)
+				detail = monitor.FormatGPUStatus(s)
+			}
+
+			ev := cls.ClassifyGPUEvent(filepath.Base(s.CardPath), string(s.Vendor), summary, detail)
 			handleEvent(ctx, ev, enr, db, rep, cfg)
 
 		case <-watchdogCh:
@@ -450,6 +490,24 @@ func runStatus(args []string) {
 		}
 		fmt.Printf("PSI memory:   some=%.1f%% full=%.1f%% (%s)\n",
 			stats.SomeAvg10, stats.FullAvg10, status)
+	}
+
+	// GPU snapshot.
+	gpus := monitor.DetectGPUs()
+	for i := range gpus {
+		gpu := &gpus[i]
+		monitor.ReadGPUTempExported(gpu)
+		monitor.ReadGPUVRAMExported(gpu)
+
+		info := fmt.Sprintf("%s (%s)", filepath.Base(gpu.CardPath), gpu.Vendor)
+		if gpu.Temperature > 0 {
+			info += fmt.Sprintf(" %d°C", gpu.Temperature)
+		}
+		if gpu.VRAMTotal > 0 {
+			pct := gpu.VRAMUsed * 100 / gpu.VRAMTotal
+			info += fmt.Sprintf(", VRAM %d%%", pct)
+		}
+		fmt.Printf("GPU:          %s\n", info)
 	}
 
 	// DB info.

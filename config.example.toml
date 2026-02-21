@@ -53,6 +53,19 @@
 # Polling interval
 # poll_interval = "1h"
 
+[gpu]
+# Enable GPU health monitoring via sysfs and vendor tools (nvidia-smi)
+# enabled = true
+
+# Polling interval for GPU temperature and VRAM checks
+# poll_interval = "30s"
+
+# Emit warning when GPU temperature exceeds this (degrees C)
+# temp_warn = 85
+
+# Emit warning when VRAM usage exceeds this percentage
+# vram_warn_pct = 90
+
 [db]
 # SQLite database path for event storage
 # path = "~/.local/share/logtriage/events.db"
