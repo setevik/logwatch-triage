@@ -40,6 +40,11 @@ func (c *Classifier) Classify(entry watcher.JournalEntry) *event.Event {
 		return ev
 	}
 
+	// T4 — Kernel/HW Error
+	if ev := c.classifyKernelHW(entry, ts); ev != nil {
+		return ev
+	}
+
 	return nil
 }
 
@@ -154,6 +159,61 @@ func extractExitCode(msg string) string {
 		return m[1]
 	}
 	return ""
+}
+
+func (c *Classifier) classifyKernelHW(entry watcher.JournalEntry, ts time.Time) *event.Event {
+	// T4 events primarily come from kernel transport.
+	if !kernelHWIdentifiers[entry.SyslogIdentifier] && entry.Transport != "kernel" {
+		return nil
+	}
+
+	for _, re := range kernelHWPatterns {
+		if !re.MatchString(entry.Message) {
+			continue
+		}
+
+		summary := extractKernelHWSummary(entry.Message)
+
+		ev := event.New(c.instanceID, ts, event.TierKernelHW, event.SevHigh, summary)
+		ev.RawFields = entry.Fields
+		return ev
+	}
+	return nil
+}
+
+// extractKernelHWSummary tries to produce a concise summary from kernel/HW messages.
+func extractKernelHWSummary(msg string) string {
+	for _, sp := range kernelHWSummaryPatterns {
+		m := sp.re.FindStringSubmatch(msg)
+		if m == nil {
+			continue
+		}
+		if len(m) > 1 {
+			return fmt.Sprintf(sp.summary, m[1])
+		}
+		return sp.summary
+	}
+	// Truncate raw message as fallback.
+	if len(msg) > 80 {
+		return "Kernel/HW: " + msg[:77] + "..."
+	}
+	return "Kernel/HW: " + msg
+}
+
+// ClassifyPSIEvent creates a T5 memory pressure event from PSI monitor data.
+// This is called directly from the main pipeline, not via journal entry classification.
+func (c *Classifier) ClassifyPSIEvent(someAvg10, fullAvg10 float64, detail string) *event.Event {
+	summary := fmt.Sprintf("Memory pressure: some=%.1f%% full=%.1f%%", someAvg10, fullAvg10)
+	ev := event.New(c.instanceID, time.Now(), event.TierMemPressure, event.SevWarning, summary)
+	ev.Detail = detail
+	return ev
+}
+
+// ClassifySMARTEvent creates a T4 kernel/HW event from a SMART status change.
+func (c *Classifier) ClassifySMARTEvent(device, summary, detail string) *event.Event {
+	ev := event.New(c.instanceID, time.Now(), event.TierKernelHW, event.SevHigh, summary)
+	ev.Detail = detail
+	return ev
 }
 
 // extractOOMProcess pulls process name and PID from OOM kill messages.

@@ -58,3 +58,58 @@ var serviceUnitRe = regexp.MustCompile(`^(\S+\.service)(?::|:?\s)`)
 // serviceExitCodeRe extracts exit status from failure messages.
 // Example: "status=1/FAILURE"
 var serviceExitCodeRe = regexp.MustCompile(`status=(\d+)/`)
+
+// T4 — Kernel/HW Error patterns
+var kernelHWPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`I/O error`),
+	regexp.MustCompile(`EXT4-fs error`),
+	regexp.MustCompile(`XFS .* error`),
+	regexp.MustCompile(`BTRFS .* error`),
+	regexp.MustCompile(`Buffer I/O error`),
+	regexp.MustCompile(`blk_update_request: I/O error`),
+	regexp.MustCompile(`mce: \[Hardware Error\]`),
+	regexp.MustCompile(`Machine check events logged`),
+	regexp.MustCompile(`MCE`),
+	regexp.MustCompile(`NMI:`),
+	regexp.MustCompile(`EDAC .* error`),
+	regexp.MustCompile(`GPU hang`),
+	regexp.MustCompile(`gpu\s+fault`),
+	regexp.MustCompile(`NVRM: Xid`),
+	regexp.MustCompile(`i915.*GPU HANG`),
+	regexp.MustCompile(`amdgpu.*GPU fault`),
+	regexp.MustCompile(`pcieport.*AER`),
+	regexp.MustCompile(`Hardware Error`),
+}
+
+// kernelHWIdentifiers are transport/identifiers that commonly produce HW events.
+var kernelHWIdentifiers = map[string]bool{
+	"kernel": true,
+}
+
+// kernelDeviceRe extracts device names from I/O error messages.
+// Example: "blk_update_request: I/O error, dev sda, sector 12345"
+var kernelDeviceRe = regexp.MustCompile(`dev\s+(\w+)`)
+
+// kernelFSDevRe extracts device from filesystem error messages.
+// Example: "EXT4-fs error (device sda1): ..."
+var kernelFSDevRe = regexp.MustCompile(`\(device\s+(\w+)\)`)
+
+// kernelHWSummaryRe tries to extract a concise error description.
+var kernelHWSummaryPatterns = []struct {
+	re      *regexp.Regexp
+	summary string
+}{
+	{regexp.MustCompile(`I/O error.*dev\s+(\w+)`), "I/O error on /dev/%s"},
+	{regexp.MustCompile(`EXT4-fs error \(device (\w+)\)`), "EXT4 error on /dev/%s"},
+	{regexp.MustCompile(`XFS.*error.*dev\s+(\w+)`), "XFS error on /dev/%s"},
+	{regexp.MustCompile(`BTRFS.*error.*dev\s+(\w+)`), "BTRFS error on /dev/%s"},
+	{regexp.MustCompile(`GPU hang`), "GPU hang detected"},
+	{regexp.MustCompile(`GPU fault`), "GPU fault detected"},
+	{regexp.MustCompile(`NVRM: Xid`), "NVIDIA GPU error (Xid)"},
+	{regexp.MustCompile(`i915.*GPU HANG`), "Intel GPU hang"},
+	{regexp.MustCompile(`amdgpu.*GPU fault`), "AMD GPU fault"},
+	{regexp.MustCompile(`MCE|mce:.*Hardware Error`), "Machine check exception"},
+	{regexp.MustCompile(`NMI:`), "NMI received"},
+	{regexp.MustCompile(`EDAC`), "Memory error (EDAC)"},
+	{regexp.MustCompile(`AER`), "PCIe AER error"},
+}

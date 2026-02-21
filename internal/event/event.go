@@ -14,6 +14,8 @@ const (
 	TierOOMKill        Tier = "T1"
 	TierProcessCrash   Tier = "T2"
 	TierServiceFailure Tier = "T3"
+	TierKernelHW       Tier = "T4"
+	TierMemPressure    Tier = "T5"
 )
 
 // Severity indicates the urgency of an event.
@@ -63,6 +65,10 @@ func (t Tier) Label() string {
 		return "Process Crash"
 	case TierServiceFailure:
 		return "Service Failure"
+	case TierKernelHW:
+		return "Kernel/HW Error"
+	case TierMemPressure:
+		return "Memory Pressure"
 	default:
 		return string(t)
 	}
