@@ -12,6 +12,8 @@ var tierEmoji = map[event.Tier]string{
 	event.TierOOMKill:        "\U0001f534", // red circle
 	event.TierProcessCrash:   "\U0001f4a5", // collision/crash
 	event.TierServiceFailure: "\U0001f6d1", // stop sign
+	event.TierKernelHW:       "\U0001f6a8", // rotating light
+	event.TierMemPressure:    "\U0001f7e1", // yellow circle
 }
 
 // tierTags maps event tiers to ntfy tag names.
@@ -19,6 +21,8 @@ var tierTags = map[event.Tier]string{
 	event.TierOOMKill:        "skull,memory",
 	event.TierProcessCrash:   "warning,crash",
 	event.TierServiceFailure: "rotating_light,service",
+	event.TierKernelHW:       "computer,disk",
+	event.TierMemPressure:    "warning,memory",
 }
 
 // FormatTitle builds the ntfy notification title for an event.

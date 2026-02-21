@@ -28,6 +28,24 @@
 # For crash-looping services, aggregate into single alert after N hits
 # aggregate_threshold = 3
 
+[psi]
+# Enable /proc/pressure/memory monitoring for pre-OOM warnings
+# enabled = true
+
+# Polling interval (switches to 1s during high pressure)
+# poll_interval = "5s"
+
+# Thresholds: emit T5 warning when pressure exceeds these
+# warn_some_avg10 = 50.0    # percent
+# warn_full_avg10 = 10.0    # percent
+
+[smart]
+# Enable smartctl disk health polling (needs smartmontools + disk group)
+# enabled = false
+
+# Polling interval
+# poll_interval = "1h"
+
 [db]
 # SQLite database path for event storage
 # path = "~/.local/share/logtriage/events.db"

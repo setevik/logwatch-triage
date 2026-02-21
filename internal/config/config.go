@@ -16,6 +16,8 @@ type Config struct {
 	Instance InstanceConfig `toml:"instance"`
 	Ntfy     NtfyConfig     `toml:"ntfy"`
 	Cooldown CooldownConfig `toml:"cooldown"`
+	PSI      PSIConfig      `toml:"psi"`
+	SMART    SMARTConfig    `toml:"smart"`
 	DB       DBConfig       `toml:"db"`
 	Log      LogConfig      `toml:"log"`
 }
@@ -37,6 +39,20 @@ type NtfyConfig struct {
 type CooldownConfig struct {
 	Window             Duration `toml:"window"`
 	AggregateThreshold int      `toml:"aggregate_threshold"`
+}
+
+// PSIConfig controls the /proc/pressure memory monitor.
+type PSIConfig struct {
+	Enabled      bool    `toml:"enabled"`
+	PollInterval Duration `toml:"poll_interval"`
+	WarnSomeAvg10 float64 `toml:"warn_some_avg10"`
+	WarnFullAvg10 float64 `toml:"warn_full_avg10"`
+}
+
+// SMARTConfig controls smartctl disk health polling.
+type SMARTConfig struct {
+	Enabled      bool     `toml:"enabled"`
+	PollInterval Duration `toml:"poll_interval"`
 }
 
 // DBConfig controls SQLite event storage.
@@ -87,6 +103,16 @@ func Default() *Config {
 		Cooldown: CooldownConfig{
 			Window:             Duration{5 * time.Minute},
 			AggregateThreshold: 3,
+		},
+		PSI: PSIConfig{
+			Enabled:       true,
+			PollInterval:  Duration{5 * time.Second},
+			WarnSomeAvg10: 50.0,
+			WarnFullAvg10: 10.0,
+		},
+		SMART: SMARTConfig{
+			Enabled:      false,
+			PollInterval: Duration{1 * time.Hour},
 		},
 		DB: DBConfig{
 			Path:      "", // defaults to ~/.local/share/logtriage/events.db at runtime
