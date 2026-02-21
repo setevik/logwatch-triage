@@ -166,6 +166,34 @@ func TestPurge(t *testing.T) {
 	}
 }
 
+func TestCount(t *testing.T) {
+	db := testDB(t)
+
+	count, err := db.Count()
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("empty db count = %d, want 0", count)
+	}
+
+	// Insert some events.
+	for i := 0; i < 5; i++ {
+		ev := makeEvent("host1", "T1", "critical", "OOM", "firefox", "")
+		if err := db.Insert(ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	count, err = db.Count()
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if count != 5 {
+		t.Errorf("count = %d, want 5", count)
+	}
+}
+
 func TestCheckCooldownFirstOccurrence(t *testing.T) {
 	db := testDB(t)
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/setevik/logtriage/internal/event"
+	"github.com/setevik/logtriage/internal/format"
 )
 
 // enrichCrash adds coredump context to a crash event by querying coredumpctl.
@@ -33,7 +34,7 @@ func enrichCrash(ctx context.Context, ev *event.Event) {
 	detail.WriteString(".\n")
 
 	if info.CoredumpSize > 0 {
-		fmt.Fprintf(&detail, "Coredump saved (%s).\n", formatBytes(info.CoredumpSize))
+		fmt.Fprintf(&detail, "Coredump saved (%s).\n", format.Bytes(info.CoredumpSize))
 	}
 
 	if len(info.Backtrace) > 0 {
@@ -99,20 +100,3 @@ func getCoredumpInfo(ctx context.Context, pid int) (*coredumpInfo, error) {
 	return info, nil
 }
 
-func formatBytes(b int64) string {
-	const (
-		kb = 1024
-		mb = kb * 1024
-		gb = mb * 1024
-	)
-	switch {
-	case b >= gb:
-		return fmt.Sprintf("%.1f GB", float64(b)/float64(gb))
-	case b >= mb:
-		return fmt.Sprintf("%.1f MB", float64(b)/float64(mb))
-	case b >= kb:
-		return fmt.Sprintf("%.1f KB", float64(b)/float64(kb))
-	default:
-		return fmt.Sprintf("%d B", b)
-	}
-}

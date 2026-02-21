@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/setevik/logtriage/internal/format"
 )
 
 // ProcMem represents a process's memory usage from /proc/[pid]/statm.
@@ -91,25 +93,8 @@ func readCommName(path string) string {
 func FormatTopConsumers(consumers []ProcMem) string {
 	var b strings.Builder
 	for i, p := range consumers {
-		fmt.Fprintf(&b, "  %d. %-20s %s\n", i+1, p.Name, formatBytes(p.RSSBytes))
+		fmt.Fprintf(&b, "  %d. %-20s %s\n", i+1, p.Name, format.Bytes(p.RSSBytes))
 	}
 	return b.String()
 }
 
-func formatBytes(b int64) string {
-	const (
-		kb = 1024
-		mb = 1024 * kb
-		gb = 1024 * mb
-	)
-	switch {
-	case b >= gb:
-		return fmt.Sprintf("%.1f GB", float64(b)/float64(gb))
-	case b >= mb:
-		return fmt.Sprintf("%.1f MB", float64(b)/float64(mb))
-	case b >= kb:
-		return fmt.Sprintf("%.1f KB", float64(b)/float64(kb))
-	default:
-		return fmt.Sprintf("%d B", b)
-	}
-}

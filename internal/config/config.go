@@ -82,14 +82,25 @@ type LogConfig struct {
 	Level string `toml:"level"`
 }
 
-// Duration wraps time.Duration for TOML string parsing (e.g. "5m", "1h").
+// Duration wraps time.Duration for TOML string parsing (e.g. "5m", "1h", "7d").
 type Duration struct {
 	time.Duration
 }
 
 func (d *Duration) UnmarshalText(text []byte) error {
+	s := string(text)
+	// Support "d" suffix for days, which time.ParseDuration does not handle.
+	if strings.HasSuffix(s, "d") {
+		s = strings.TrimSuffix(s, "d")
+		var days int
+		if _, err := fmt.Sscanf(s, "%d", &days); err != nil {
+			return fmt.Errorf("invalid days format: %s", s)
+		}
+		d.Duration = time.Duration(days) * 24 * time.Hour
+		return nil
+	}
 	var err error
-	d.Duration, err = time.ParseDuration(string(text))
+	d.Duration, err = time.ParseDuration(s)
 	return err
 }
 

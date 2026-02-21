@@ -72,7 +72,7 @@ func TestReadGPUTemp(t *testing.T) {
 	os.WriteFile(filepath.Join(hwmonPath, "temp1_crit"), []byte("100000\n"), 0o644)
 
 	gpu := GPUStatus{CardPath: cardPath, Vendor: GPUVendorAMD}
-	readGPUTemp(&gpu)
+	ReadGPUTemp(&gpu)
 
 	if gpu.Temperature != 72 {
 		t.Errorf("Temperature = %d, want 72", gpu.Temperature)
@@ -88,7 +88,7 @@ func TestReadGPUTempMissing(t *testing.T) {
 	os.MkdirAll(filepath.Join(cardPath, "device"), 0o755)
 
 	gpu := GPUStatus{CardPath: cardPath, Vendor: GPUVendorAMD}
-	readGPUTemp(&gpu)
+	ReadGPUTemp(&gpu)
 
 	if gpu.Temperature != 0 {
 		t.Errorf("Temperature = %d, want 0 for missing hwmon", gpu.Temperature)
@@ -105,7 +105,7 @@ func TestReadGPUVRAM(t *testing.T) {
 	os.WriteFile(filepath.Join(devicePath, "mem_info_vram_total"), []byte("8589934592\n"), 0o644)  // 8 GB
 
 	gpu := GPUStatus{CardPath: cardPath, Vendor: GPUVendorAMD}
-	readGPUVRAM(&gpu)
+	ReadGPUVRAM(&gpu)
 
 	if gpu.VRAMUsed != 4294967296 {
 		t.Errorf("VRAMUsed = %d, want 4294967296", gpu.VRAMUsed)
@@ -126,7 +126,7 @@ func TestReadGPUVRAMNonAMD(t *testing.T) {
 	os.WriteFile(filepath.Join(devicePath, "mem_info_vram_total"), []byte("2000\n"), 0o644)
 
 	gpu := GPUStatus{CardPath: cardPath, Vendor: GPUVendorNVIDIA}
-	readGPUVRAM(&gpu)
+	ReadGPUVRAM(&gpu)
 
 	if gpu.VRAMUsed != 0 || gpu.VRAMTotal != 0 {
 		t.Errorf("VRAM should be 0 for non-AMD GPU, got used=%d total=%d", gpu.VRAMUsed, gpu.VRAMTotal)
@@ -178,22 +178,4 @@ func TestFormatGPUStatus(t *testing.T) {
 	}
 }
 
-func TestFormatBytesGPU(t *testing.T) {
-	tests := []struct {
-		input    int64
-		expected string
-	}{
-		{0, "0 B"},
-		{1024 * 1024, "1 MB"},
-		{4 * 1024 * 1024 * 1024, "4.0 GB"},
-		{int64(1.5 * 1024 * 1024 * 1024), "1.5 GB"},
-	}
-
-	for _, tt := range tests {
-		got := formatBytesGPU(tt.input)
-		if got != tt.expected {
-			t.Errorf("formatBytesGPU(%d) = %q, want %q", tt.input, got, tt.expected)
-		}
-	}
-}
 

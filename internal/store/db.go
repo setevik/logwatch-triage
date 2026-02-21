@@ -138,6 +138,16 @@ func (d *DB) Query(f QueryFilter) ([]*event.Event, error) {
 	return events, rows.Err()
 }
 
+// Count returns the total number of events in the database.
+func (d *DB) Count() (int64, error) {
+	var count int64
+	err := d.db.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting events: %w", err)
+	}
+	return count, nil
+}
+
 // Purge deletes events older than the given retention duration.
 func (d *DB) Purge(retention time.Duration) (int64, error) {
 	cutoff := time.Now().Add(-retention).UTC().Format(time.RFC3339Nano)

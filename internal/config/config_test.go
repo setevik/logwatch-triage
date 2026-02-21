@@ -120,6 +120,32 @@ func TestShouldAlert(t *testing.T) {
 	}
 }
 
+func TestDurationDaySuffix(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	content := `
+[db]
+retention = "90d"
+
+[cooldown]
+window = "1h"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("loading config: %v", err)
+	}
+
+	expected := 90 * 24 * time.Hour
+	if cfg.DB.Retention.Duration != expected {
+		t.Errorf("retention = %v, want %v", cfg.DB.Retention.Duration, expected)
+	}
+}
+
 func TestNtfyPriority(t *testing.T) {
 	cfg := Default()
 
