@@ -167,17 +167,29 @@ func (c *Classifier) classifyKernelHW(entry watcher.JournalEntry, ts time.Time) 
 		return nil
 	}
 
+	// Check disk/CPU/generic HW patterns.
 	for _, re := range kernelHWPatterns {
 		if !re.MatchString(entry.Message) {
 			continue
 		}
-
 		summary := extractKernelHWSummary(entry.Message)
-
 		ev := event.New(c.instanceID, ts, event.TierKernelHW, event.SevHigh, summary)
 		ev.RawFields = entry.Fields
 		return ev
 	}
+
+	// Check GPU-specific patterns.
+	for _, re := range gpuPatterns {
+		if !re.MatchString(entry.Message) {
+			continue
+		}
+		summary := extractGPUSummary(entry.Message)
+		ev := event.New(c.instanceID, ts, event.TierKernelHW, event.SevHigh, summary)
+		ev.RawFields = entry.Fields
+		ev.RawFields["_gpu_event"] = "true"
+		return ev
+	}
+
 	return nil
 }
 
@@ -200,6 +212,52 @@ func extractKernelHWSummary(msg string) string {
 	return "Kernel/HW: " + msg
 }
 
+// extractGPUSummary produces a concise summary for GPU-specific events.
+// It uses the shared kernelHWSummaryPatterns (which include GPU entries) and
+// adds GPU-specific detail extraction (Xid codes, ring names, ecodes).
+func extractGPUSummary(msg string) string {
+	// Try NVIDIA Xid with code description.
+	if m := nvidiaXidRe.FindStringSubmatch(msg); len(m) == 2 {
+		code := m[1]
+		if desc, ok := nvidiaXidDescriptions[code]; ok {
+			return fmt.Sprintf("NVIDIA Xid %s: %s", code, desc)
+		}
+		return fmt.Sprintf("NVIDIA GPU error (Xid %s)", code)
+	}
+
+	// Try AMD ring timeout with ring name.
+	if m := amdGPURingRe.FindStringSubmatch(msg); len(m) == 2 {
+		return fmt.Sprintf("AMD GPU ring %s timeout", m[1])
+	}
+
+	// Try Intel GPU HANG with ecode.
+	if m := i915EcodeRe.FindStringSubmatch(msg); len(m) == 2 {
+		return fmt.Sprintf("Intel GPU hang (ecode %s)", m[1])
+	}
+
+	// Try Intel engine reset with reason.
+	if m := i915ResetRe.FindStringSubmatch(msg); len(m) == 3 {
+		return fmt.Sprintf("Intel GPU resetting %s: %s", m[1], m[2])
+	}
+
+	// Fall back to shared summary patterns.
+	return extractKernelHWSummary(msg)
+}
+
+// IsCompositorProcess returns true if the process name is a known compositor.
+func IsCompositorProcess(process string) bool {
+	_, ok := compositorProcesses[process]
+	return ok
+}
+
+// CompositorLabel returns a friendly label for a compositor process name.
+func CompositorLabel(process string) string {
+	if label, ok := compositorProcesses[process]; ok {
+		return label
+	}
+	return process
+}
+
 // ClassifyPSIEvent creates a T5 memory pressure event from PSI monitor data.
 // This is called directly from the main pipeline, not via journal entry classification.
 func (c *Classifier) ClassifyPSIEvent(someAvg10, fullAvg10 float64, detail string) *event.Event {
@@ -213,6 +271,16 @@ func (c *Classifier) ClassifyPSIEvent(someAvg10, fullAvg10 float64, detail strin
 func (c *Classifier) ClassifySMARTEvent(device, summary, detail string) *event.Event {
 	ev := event.New(c.instanceID, time.Now(), event.TierKernelHW, event.SevHigh, summary)
 	ev.Detail = detail
+	return ev
+}
+
+// ClassifyGPUEvent creates a T4 kernel/HW event from a GPU monitor threshold.
+func (c *Classifier) ClassifyGPUEvent(card, vendor, summary, detail string) *event.Event {
+	ev := event.New(c.instanceID, time.Now(), event.TierKernelHW, event.SevHigh, summary)
+	ev.Detail = detail
+	ev.RawFields["_gpu_event"] = "true"
+	ev.RawFields["_gpu_vendor"] = vendor
+	ev.RawFields["_gpu_card"] = card
 	return ev
 }
 
