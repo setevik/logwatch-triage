@@ -43,6 +43,13 @@ func (d *DB) CheckCooldown(ev *event.Event, window time.Duration, threshold int)
 	} else if ev.Process != "" {
 		query += " AND process = ?"
 		args = append(args, ev.Process)
+	} else {
+		// When both process and unit are empty, constrain to events that
+		// also lack identifiers and match on summary to prevent unrelated
+		// events (e.g. different T4 hardware errors) from suppressing
+		// each other.
+		query += " AND (process IS NULL OR process = '') AND (unit IS NULL OR unit = '') AND summary = ?"
+		args = append(args, ev.Summary)
 	}
 
 	var count int
