@@ -21,8 +21,8 @@ func enrichGPU(ctx context.Context, ev *event.Event) {
 	var detail strings.Builder
 	for i := range gpus {
 		gpu := &gpus[i]
-		monitor.ReadGPUTempExported(gpu)
-		monitor.ReadGPUVRAMExported(gpu)
+		monitor.ReadGPUTemp(gpu)
+		monitor.ReadGPUVRAM(gpu)
 
 		if gpu.Temperature > 0 || gpu.VRAMTotal > 0 {
 			detail.WriteString(monitor.FormatGPUStatus(*gpu))

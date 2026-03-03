@@ -71,7 +71,7 @@
 # path = "~/.local/share/logtriage/events.db"
 
 # How long to retain events before automatic cleanup
-# retention = "2160h"  # 90 days
+# retention = "90d"  # also accepts "2160h"
 
 [log]
 # Log level: debug, info, warn, error
