@@ -3,7 +3,10 @@ package monitor
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/setevik/logtriage/internal/format"
 )
 
 func TestTopMemConsumers(t *testing.T) {
@@ -55,10 +58,10 @@ func TestFormatTopConsumers(t *testing.T) {
 		t.Fatal("FormatTopConsumers returned empty string")
 	}
 	// Should contain both process names.
-	if !contains(out, "firefox") || !contains(out, "electron") {
+	if !strings.Contains(out, "firefox") || !strings.Contains(out, "electron") {
 		t.Errorf("output missing process names: %s", out)
 	}
-	if !contains(out, "GB") {
+	if !strings.Contains(out, "GB") {
 		t.Errorf("output missing GB unit: %s", out)
 	}
 }
@@ -74,9 +77,9 @@ func TestFormatBytes(t *testing.T) {
 		{3 * 1024 * 1024 * 1024, "3.0 GB"},
 	}
 	for _, tt := range tests {
-		got := formatBytes(tt.bytes)
+		got := format.Bytes(tt.bytes)
 		if got != tt.want {
-			t.Errorf("formatBytes(%d) = %q, want %q", tt.bytes, got, tt.want)
+			t.Errorf("format.Bytes(%d) = %q, want %q", tt.bytes, got, tt.want)
 		}
 	}
 }
@@ -95,15 +98,3 @@ func makeFakeProc(t *testing.T, root, pid, name, statm string) {
 	}
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && containsStr(s, substr)
-}
-
-func containsStr(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

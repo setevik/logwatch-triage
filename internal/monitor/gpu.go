@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/setevik/logtriage/internal/format"
 )
 
 // GPUVendor identifies the GPU driver/vendor.
@@ -89,8 +91,8 @@ func (m *GPUMonitor) checkAll(ctx context.Context, ch chan<- GPUEvent) {
 
 	for i := range gpus {
 		gpu := &gpus[i]
-		readGPUTemp(gpu)
-		readGPUVRAM(gpu)
+		ReadGPUTemp(gpu)
+		ReadGPUVRAM(gpu)
 
 		// For NVIDIA, try nvidia-smi if sysfs data is missing.
 		if gpu.Vendor == GPUVendorNVIDIA && gpu.Temperature == 0 {
@@ -185,20 +187,8 @@ func identifyGPUVendor(cardPath string) GPUVendor {
 	return ""
 }
 
-// ReadGPUTempExported reads GPU temperature from hwmon sysfs.
-// Exported for use by enricher package.
-func ReadGPUTempExported(gpu *GPUStatus) {
-	readGPUTemp(gpu)
-}
-
-// ReadGPUVRAMExported reads VRAM usage from sysfs.
-// Exported for use by enricher package.
-func ReadGPUVRAMExported(gpu *GPUStatus) {
-	readGPUVRAM(gpu)
-}
-
-// readGPUTemp reads GPU temperature from hwmon sysfs.
-func readGPUTemp(gpu *GPUStatus) {
+// ReadGPUTemp reads GPU temperature from hwmon sysfs.
+func ReadGPUTemp(gpu *GPUStatus) {
 	hwmonPath := filepath.Join(gpu.CardPath, "device", "hwmon")
 	entries, err := os.ReadDir(hwmonPath)
 	if err != nil {
@@ -227,8 +217,8 @@ func readGPUTemp(gpu *GPUStatus) {
 	}
 }
 
-// readGPUVRAM reads VRAM usage from amdgpu sysfs.
-func readGPUVRAM(gpu *GPUStatus) {
+// ReadGPUVRAM reads VRAM usage from amdgpu sysfs.
+func ReadGPUVRAM(gpu *GPUStatus) {
 	if gpu.Vendor != GPUVendorAMD {
 		return
 	}
@@ -315,25 +305,11 @@ func FormatGPUStatus(gpu GPUStatus) string {
 	if gpu.VRAMTotal > 0 {
 		pct := gpu.VRAMUsed * 100 / gpu.VRAMTotal
 		fmt.Fprintf(&b, "  VRAM: %s / %s (%d%%)\n",
-			formatBytesGPU(gpu.VRAMUsed),
-			formatBytesGPU(gpu.VRAMTotal),
+			format.Bytes(gpu.VRAMUsed),
+			format.Bytes(gpu.VRAMTotal),
 			pct)
 	}
 
 	return b.String()
 }
 
-func formatBytesGPU(b int64) string {
-	const (
-		mb = 1024 * 1024
-		gb = 1024 * 1024 * 1024
-	)
-	switch {
-	case b >= gb:
-		return fmt.Sprintf("%.1f GB", float64(b)/float64(gb))
-	case b >= mb:
-		return fmt.Sprintf("%d MB", b/mb)
-	default:
-		return fmt.Sprintf("%d B", b)
-	}
-}
