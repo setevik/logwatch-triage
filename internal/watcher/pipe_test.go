@@ -1,8 +1,11 @@
 package watcher
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
+	"time"
 )
 
 func TestParseJournalJSON(t *testing.T) {
@@ -82,5 +85,94 @@ func TestParseJournalJSONNumericPriority(t *testing.T) {
 
 	if entry.Priority != 3 {
 		t.Errorf("Priority = %d, want 3", entry.Priority)
+	}
+}
+
+// failingSource is a JournalSource that always fails to start.
+type failingSource struct{}
+
+func (f *failingSource) Entries(ctx context.Context) (<-chan JournalEntry, error) {
+	return nil, fmt.Errorf("simulated failure")
+}
+
+func (f *failingSource) Stop() {}
+
+// TestSupervisedSourceMaxRestartsClosesChannel verifies that when a supervised
+// source exhausts its maxRestarts, the output channel is closed. This is
+// important because the main loop must detect this channel close and return
+// an error (not nil) so systemd can restart the daemon.
+func TestSupervisedSourceMaxRestartsClosesChannel(t *testing.T) {
+	sup := NewSupervisedSource(
+		func() JournalSource { return &failingSource{} },
+		1*time.Millisecond, // minimal wait to keep test fast
+		2,                  // allow 2 restarts
+	)
+
+	ctx := context.Background()
+	ch, err := sup.Entries(ctx)
+	if err != nil {
+		t.Fatalf("Entries() error: %v", err)
+	}
+
+	// The channel should close once max restarts are exhausted.
+	select {
+	case _, ok := <-ch:
+		if ok {
+			t.Error("expected channel to be closed, but received an entry")
+		}
+		// Channel closed as expected.
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for channel to close after max restarts")
+	}
+}
+
+// finiteSource sends one entry then closes, simulating a source that crashes.
+type finiteSource struct {
+	entry JournalEntry
+}
+
+func (f *finiteSource) Entries(ctx context.Context) (<-chan JournalEntry, error) {
+	ch := make(chan JournalEntry, 1)
+	ch <- f.entry
+	close(ch)
+	return ch, nil
+}
+
+func (f *finiteSource) Stop() {}
+
+// TestSupervisedSourceForwardsEntries verifies that entries from the underlying
+// source are forwarded through the supervised channel before a restart occurs.
+func TestSupervisedSourceForwardsEntries(t *testing.T) {
+	entry := JournalEntry{Message: "test message"}
+	callCount := 0
+
+	sup := NewSupervisedSource(
+		func() JournalSource {
+			callCount++
+			return &finiteSource{entry: entry}
+		},
+		1*time.Millisecond,
+		2,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ch, err := sup.Entries(ctx)
+	if err != nil {
+		t.Fatalf("Entries() error: %v", err)
+	}
+
+	// Should receive at least one entry before restarts exhaust.
+	select {
+	case got, ok := <-ch:
+		if !ok {
+			t.Fatal("channel closed before receiving any entries")
+		}
+		if got.Message != "test message" {
+			t.Errorf("Message = %q, want %q", got.Message, "test message")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for entry")
 	}
 }

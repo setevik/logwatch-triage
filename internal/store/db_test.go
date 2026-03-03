@@ -290,3 +290,149 @@ func TestCheckCooldownByUnit(t *testing.T) {
 		t.Error("different unit should alert")
 	}
 }
+
+// TestCheckCooldownInsertBeforeCheckBug validates that the cooldown check must
+// happen before the event is inserted. If CheckCooldown runs after Insert, the
+// current event is counted against itself and the first occurrence is wrongly
+// suppressed (count=1 instead of count=0).
+func TestCheckCooldownInsertBeforeCheckBug(t *testing.T) {
+	db := testDB(t)
+
+	ev := makeEvent("host1", "T2", "high", "Crash: vlc", "vlc", "")
+
+	// Simulate the OLD (buggy) order: insert first, then check.
+	if err := db.Insert(ev); err != nil {
+		t.Fatal(err)
+	}
+	result, err := db.CheckCooldown(ev, 5*time.Minute, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// With insert-before-check, count=1, which falls into default → suppress.
+	// This is the bug: a first occurrence gets suppressed.
+	if result.ShouldAlert {
+		t.Error("expected insert-before-check to suppress first occurrence (demonstrating the bug)")
+	}
+	if result.RecentCount != 1 {
+		t.Errorf("RecentCount = %d, want 1 (the just-inserted event)", result.RecentCount)
+	}
+}
+
+// TestCheckCooldownCheckBeforeInsertFix validates the correct order: check
+// cooldown first, then insert. The first occurrence correctly sees count=0
+// and alerts.
+func TestCheckCooldownCheckBeforeInsertFix(t *testing.T) {
+	db := testDB(t)
+
+	ev := makeEvent("host1", "T2", "high", "Crash: vlc", "vlc", "")
+
+	// Correct order: check first, then insert.
+	result, err := db.CheckCooldown(ev, 5*time.Minute, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.ShouldAlert {
+		t.Error("check-before-insert: first occurrence should alert")
+	}
+	if result.RecentCount != 0 {
+		t.Errorf("RecentCount = %d, want 0", result.RecentCount)
+	}
+
+	// Now insert.
+	if err := db.Insert(ev); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second event: check first, should be suppressed (count=1).
+	ev2 := makeEvent("host1", "T2", "high", "Crash: vlc", "vlc", "")
+	result, err = db.CheckCooldown(ev2, 5*time.Minute, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ShouldAlert {
+		t.Error("second occurrence should be suppressed")
+	}
+	if result.RecentCount != 1 {
+		t.Errorf("RecentCount = %d, want 1", result.RecentCount)
+	}
+}
+
+// TestCheckCooldownEmptyProcessUnitDifferentSummaries verifies that events
+// without process or unit but with different summaries do NOT suppress each
+// other. Before the fix, all T4 events with empty process/unit were grouped
+// together, causing e.g. GPU errors to suppress disk I/O errors.
+func TestCheckCooldownEmptyProcessUnitDifferentSummaries(t *testing.T) {
+	db := testDB(t)
+
+	// Insert a GPU error (T4, no process or unit).
+	gpuErr := makeEvent("host1", "T4", "high", "NVIDIA Xid 79: GPU fallen off bus", "", "")
+	if err := db.Insert(gpuErr); err != nil {
+		t.Fatal(err)
+	}
+
+	// A different T4 event (disk I/O error) should still alert since it has
+	// a different summary, even though tier, process, and unit match.
+	diskErr := makeEvent("host1", "T4", "high", "Disk I/O error: sda", "", "")
+	result, err := db.CheckCooldown(diskErr, 5*time.Minute, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.ShouldAlert {
+		t.Error("different T4 event with different summary should alert, not be suppressed by GPU error")
+	}
+	if result.RecentCount != 0 {
+		t.Errorf("RecentCount = %d, want 0 (different summary)", result.RecentCount)
+	}
+}
+
+// TestCheckCooldownEmptyProcessUnitSameSummary verifies that events without
+// process or unit but with the same summary ARE correctly deduplicated.
+func TestCheckCooldownEmptyProcessUnitSameSummary(t *testing.T) {
+	db := testDB(t)
+
+	// Insert a T4 event with no process or unit.
+	ev1 := makeEvent("host1", "T4", "high", "MCE: Machine check error", "", "")
+	if err := db.Insert(ev1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Same summary → should be suppressed.
+	ev2 := makeEvent("host1", "T4", "high", "MCE: Machine check error", "", "")
+	result, err := db.CheckCooldown(ev2, 5*time.Minute, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ShouldAlert {
+		t.Error("same T4 event with same summary should be suppressed")
+	}
+	if result.RecentCount != 1 {
+		t.Errorf("RecentCount = %d, want 1", result.RecentCount)
+	}
+}
+
+// TestCheckCooldownEmptyProcessUnitDoesNotMatchProcessEvent verifies that
+// events with a process set are not counted when deduplicating an event that
+// has no process or unit.
+func TestCheckCooldownEmptyProcessUnitDoesNotMatchProcessEvent(t *testing.T) {
+	db := testDB(t)
+
+	// Insert a T4 event that has a process set.
+	withProcess := makeEvent("host1", "T4", "high", "Kernel/HW: something", "kernel", "")
+	if err := db.Insert(withProcess); err != nil {
+		t.Fatal(err)
+	}
+
+	// A T4 event without process/unit should not count the above event,
+	// even if tier matches.
+	noProcess := makeEvent("host1", "T4", "high", "Kernel/HW: something", "", "")
+	result, err := db.CheckCooldown(noProcess, 5*time.Minute, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.ShouldAlert {
+		t.Error("event without process should not be suppressed by event with process")
+	}
+	if result.RecentCount != 0 {
+		t.Errorf("RecentCount = %d, want 0", result.RecentCount)
+	}
+}
