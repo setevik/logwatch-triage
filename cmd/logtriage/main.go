@@ -208,8 +208,7 @@ func run(cfg *config.Config) error {
 		select {
 		case entry, ok := <-entries:
 			if !ok {
-				slog.Warn("journal entry channel closed")
-				return nil
+				return fmt.Errorf("journal entry channel closed unexpectedly")
 			}
 
 			ev := cls.Classify(entry)
@@ -312,15 +311,16 @@ func handleEvent(ctx context.Context, ev *event.Event, enr *enricher.Enricher, d
 
 	enr.Enrich(ctx, ev)
 
-	// Store event in database.
-	if err := db.Insert(ev); err != nil {
-		slog.Error("failed to store event", "error", err)
-	}
-
-	// Check cooldown before notifying.
+	// Check cooldown before storing so the current event is not counted
+	// against itself (otherwise first occurrences are suppressed).
 	dedup, err := db.CheckCooldown(ev, cfg.Cooldown.Window.Duration, cfg.Cooldown.AggregateThreshold)
 	if err != nil {
 		slog.Error("cooldown check failed", "error", err)
+	}
+
+	// Store event in database.
+	if err := db.Insert(ev); err != nil {
+		slog.Error("failed to store event", "error", err)
 	}
 
 	if dedup.ShouldAlert {
@@ -649,7 +649,7 @@ func doTestNtfy(cfg *config.Config) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if err := rep.Report(ctx, ev.ToEvent()); err != nil {
+	if err := rep.ReportDirect(ctx, ev.ToEvent()); err != nil {
 		fmt.Fprintf(os.Stderr, "error sending test notification: %v\n", err)
 		os.Exit(1)
 	}

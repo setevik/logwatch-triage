@@ -41,6 +41,20 @@ func (r *NtfyReporter) Report(ctx context.Context, ev *event.Event) error {
 		return nil
 	}
 
+	return r.send(ctx, ev)
+}
+
+// ReportDirect sends a notification unconditionally, bypassing the alert tier
+// check. Use this for test notifications that must always be delivered.
+func (r *NtfyReporter) ReportDirect(ctx context.Context, ev *event.Event) error {
+	if r.cfg.Ntfy.URL == "" {
+		return fmt.Errorf("ntfy URL not configured")
+	}
+
+	return r.send(ctx, ev)
+}
+
+func (r *NtfyReporter) send(ctx context.Context, ev *event.Event) error {
 	title := FormatTitle(ev)
 	body := FormatBody(ev)
 	priority := r.cfg.NtfyPriority(string(ev.Severity))

@@ -4,6 +4,10 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
+# Pin toolchain to local install to avoid GOROOT mismatch when
+# auto-toolchain selects a path with incomplete stdlib.
+export GOTOOLCHAIN := local
+
 .PHONY: build test lint clean install
 
 build:
