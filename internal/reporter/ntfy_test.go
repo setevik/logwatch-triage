@@ -158,3 +158,70 @@ func TestNtfyReporterNoURL(t *testing.T) {
 		t.Fatalf("Report() with no URL should not error, got: %v", err)
 	}
 }
+
+// TestReportDirectBypassesTierFilter verifies that ReportDirect sends the
+// notification even when the event's tier is not in the configured alert_tiers.
+// This is the fix for test-ntfy reporting "sent successfully" without actually
+// sending anything.
+func TestReportDirectBypassesTierFilter(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := config.Default()
+	cfg.Ntfy.URL = server.URL
+	cfg.Ntfy.AlertTiers = []string{"T1"} // only T1
+
+	rep := NewNtfy(cfg)
+
+	ev := &event.Event{
+		ID:         "test-direct-1",
+		InstanceID: "testhost",
+		Timestamp:  time.Now(),
+		Tier:       event.TierProcessCrash, // T2 - NOT in alert tiers
+		Severity:   event.SevHigh,
+		Summary:    "Test notification",
+		RawFields:  map[string]string{},
+	}
+
+	ctx := context.Background()
+
+	// Report (with tier filter) should skip T2.
+	if err := rep.Report(ctx, ev); err != nil {
+		t.Fatalf("Report() error: %v", err)
+	}
+	if called {
+		t.Error("Report() should not send for non-alert tier")
+	}
+
+	// ReportDirect should send regardless of tier filter.
+	if err := rep.ReportDirect(ctx, ev); err != nil {
+		t.Fatalf("ReportDirect() error: %v", err)
+	}
+	if !called {
+		t.Error("ReportDirect() should send even for non-alert tier")
+	}
+}
+
+// TestReportDirectNoURL verifies that ReportDirect returns an error when the
+// ntfy URL is not configured, unlike Report which silently returns nil.
+func TestReportDirectNoURL(t *testing.T) {
+	cfg := config.Default()
+	cfg.Ntfy.URL = "" // no URL
+
+	rep := NewNtfy(cfg)
+	ev := &event.Event{
+		Tier:      event.TierProcessCrash,
+		Severity:  event.SevHigh,
+		Summary:   "Test",
+		RawFields: map[string]string{},
+	}
+
+	err := rep.ReportDirect(context.Background(), ev)
+	if err == nil {
+		t.Fatal("ReportDirect() with no URL should return an error")
+	}
+}
